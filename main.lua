@@ -1,4 +1,4 @@
--- TSB Advanced Hub - Clean Rewrite
+-- TSB Advanced Hub - Clean Rewrite & Optimized
 -- All features properly gated, no leaks
 -- Made for Nono
 
@@ -19,7 +19,7 @@ local Config = {
     Aimlock = false,
     AimPrediction = 0.14,
     NoDashCooldown = false,
-    AutoDash = false,          -- this was leaking before
+    AutoDash = false,
     WalkSpeedEnabled = false,
     WalkSpeed = 16,
     Fly = false,
@@ -201,7 +201,7 @@ slider("Aim Prediction", 0, 30, 14, function(v) Config.AimPrediction = v/100 end
 
 section("Movement")
 toggle("No Dash Cooldown", false, function(v) Config.NoDashCooldown = v end)
-toggle("Auto Dash", false, function(v) Config.AutoDash = v end)   -- now correctly gated
+toggle("Auto Dash", false, function(v) Config.AutoDash = v end)
 toggle("WalkSpeed Enabled", false, function(v) Config.WalkSpeedEnabled = v end)
 slider("WalkSpeed", 16, 200, 16, function(v) Config.WalkSpeed = v end)
 toggle("Fly", false, function(v)
@@ -279,7 +279,7 @@ techToggle("Supa Tech", Tech.SupaTech)
 techToggle("Oreo Dash", Tech.OreoDash)
 techToggle("Lethal Dash", Tech.LethalDash)
 
--- ====================== LOGIC (fully gated) ======================
+-- ====================== LOGIC ======================
 
 local function isAttackTrack(track)
     if not track or not track.IsPlaying then return false end
@@ -307,7 +307,7 @@ local function getClosest(range)
     return best
 end
 
--- Auto Block (only on real attack + hold 0.8s)
+-- Auto Block
 RunService.Heartbeat:Connect(function()
     if not Config.AutoBlock then return end
     if isBlocking then return end
@@ -350,7 +350,7 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
--- Hitbox
+-- Hitbox Expander
 RunService.Heartbeat:Connect(function()
     if not Config.HitboxExpander then return end
     for _, p in ipairs(Players:GetPlayers()) do
@@ -365,7 +365,7 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
--- WalkSpeed + No Dash Cooldown
+-- WalkSpeed & Cooldown Bypass
 RunService.Heartbeat:Connect(function()
     local char = LocalPlayer.Character
     if not char then return end
@@ -378,7 +378,7 @@ RunService.Heartbeat:Connect(function()
 
     if Config.NoDashCooldown then
         for _, obj in ipairs(char:GetDescendants()) do
-            if (obj:IsA("NumberValue") or obj:IsA("IntValue")) then
+            if obj:IsA("NumberValue") or obj:IsA("IntValue") then
                 local n = string.lower(obj.Name)
                 if n:find("dash") or n:find("cooldown") or n:find("cd") or n:find("delay") or n:find("timer") then
                     obj.Value = 0
@@ -393,9 +393,9 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
--- Auto Dash (STRICTLY gated)
+-- Auto Dash
 RunService.Heartbeat:Connect(function()
-    if not Config.AutoDash then return end          -- <-- this was missing proper gate before
+    if not Config.AutoDash then return end
     if tick() % 0.25 > 0.03 then return end
     pcall(function()
         VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Q, false, game)
@@ -442,7 +442,7 @@ RunService.Stepped:Connect(function()
     end
 end)
 
--- Tech keybinds
+-- Tech Keybinds
 UserInputService.InputBegan:Connect(function(inp, gpe)
     if gpe then return end
     for name, data in pairs(Tech) do
@@ -453,7 +453,7 @@ UserInputService.InputBegan:Connect(function(inp, gpe)
     end
 end)
 
--- Tech execution (only when Enabled == true)
+-- Tech Execution
 RunService.Heartbeat:Connect(function()
     local now = tick()
     if not LocalPlayer.Character then return end
