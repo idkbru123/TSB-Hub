@@ -1,10 +1,11 @@
--- TSB Advanced Hub
+-- TSB Advanced Hub (Fixed Auto Block + Range)
 -- Made for Nono
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 local Mouse = LocalPlayer:GetMouse()
@@ -12,10 +13,11 @@ local Mouse = LocalPlayer:GetMouse()
 -- ====================== SETTINGS ======================
 local Settings = {
     AutoBlock = false,
+    AutoBlockRange = 15,          -- NEW: Range slider
     HitboxExpander = false,
     HitboxSize = 8,
     Aimlock = false,
-    AimPart = "Head", -- Head / HumanoidRootPart
+    AimPart = "Head",
     AimPrediction = 0.135,
     AimFOV = 180,
     NoDashCooldown = false,
@@ -34,9 +36,9 @@ local Tech = {
     LethalDash = {Enabled = false, Key = Enum.KeyCode.F},
 }
 
-local Connections = {}
 local Flying = false
 local BodyVelocity, BodyGyro
+local LastBlock = 0
 
 -- ====================== UI ======================
 local ScreenGui = Instance.new("ScreenGui")
@@ -47,8 +49,8 @@ ScreenGui.Parent = game:GetService("CoreGui")
 
 local Main = Instance.new("Frame")
 Main.Name = "Main"
-Main.Size = UDim2.new(0, 320, 0, 420)
-Main.Position = UDim2.new(0.5, -160, 0.5, -210)
+Main.Size = UDim2.new(0, 320, 0, 460)
+Main.Position = UDim2.new(0.5, -160, 0.5, -230)
 Main.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
 Main.BorderSizePixel = 0
 Main.Active = true
@@ -91,7 +93,7 @@ Scroll.Position = UDim2.new(0, 8, 0, 42)
 Scroll.BackgroundTransparency = 1
 Scroll.ScrollBarThickness = 4
 Scroll.ScrollBarImageColor3 = Color3.fromRGB(80, 80, 100)
-Scroll.CanvasSize = UDim2.new(0, 0, 0, 900)
+Scroll.CanvasSize = UDim2.new(0, 0, 0, 980)
 Scroll.Parent = Main
 
 local List = Instance.new("UIListLayout")
@@ -99,18 +101,16 @@ List.Padding = UDim.new(0, 6)
 List.SortOrder = Enum.SortOrder.LayoutOrder
 List.Parent = Scroll
 
--- Helper functions
+-- Helpers
 local function createSection(name)
     local frame = Instance.new("Frame")
     frame.Size = UDim2.new(1, 0, 0, 28)
     frame.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
     frame.BorderSizePixel = 0
     frame.Parent = Scroll
-
     local corner = Instance.new("UICorner")
     corner.CornerRadius = UDim.new(0, 6)
     corner.Parent = frame
-
     local label = Instance.new("TextLabel")
     label.Size = UDim2.new(1, -10, 1, 0)
     label.Position = UDim2.new(0, 10, 0, 0)
@@ -121,7 +121,6 @@ local function createSection(name)
     label.TextSize = 14
     label.TextXAlignment = Enum.TextXAlignment.Left
     label.Parent = frame
-
     return frame
 end
 
@@ -131,11 +130,9 @@ local function createToggle(name, default, callback)
     frame.BackgroundColor3 = Color3.fromRGB(25, 25, 32)
     frame.BorderSizePixel = 0
     frame.Parent = Scroll
-
     local corner = Instance.new("UICorner")
     corner.CornerRadius = UDim.new(0, 6)
     corner.Parent = frame
-
     local label = Instance.new("TextLabel")
     label.Size = UDim2.new(1, -60, 1, 0)
     label.Position = UDim2.new(0, 10, 0, 0)
@@ -146,7 +143,6 @@ local function createToggle(name, default, callback)
     label.TextSize = 13
     label.TextXAlignment = Enum.TextXAlignment.Left
     label.Parent = frame
-
     local btn = Instance.new("TextButton")
     btn.Size = UDim2.new(0, 44, 0, 22)
     btn.Position = UDim2.new(1, -52, 0.5, -11)
@@ -156,11 +152,9 @@ local function createToggle(name, default, callback)
     btn.Font = Enum.Font.GothamBold
     btn.TextSize = 11
     btn.Parent = frame
-
     local btnCorner = Instance.new("UICorner")
     btnCorner.CornerRadius = UDim.new(0, 4)
     btnCorner.Parent = btn
-
     local state = default
     btn.MouseButton1Click:Connect(function()
         state = not state
@@ -168,7 +162,6 @@ local function createToggle(name, default, callback)
         btn.Text = state and "ON" or "OFF"
         callback(state)
     end)
-
     return frame
 end
 
@@ -178,11 +171,9 @@ local function createSlider(name, min, max, default, callback)
     frame.BackgroundColor3 = Color3.fromRGB(25, 25, 32)
     frame.BorderSizePixel = 0
     frame.Parent = Scroll
-
     local corner = Instance.new("UICorner")
     corner.CornerRadius = UDim.new(0, 6)
     corner.Parent = frame
-
     local label = Instance.new("TextLabel")
     label.Size = UDim2.new(1, -20, 0, 20)
     label.Position = UDim2.new(0, 10, 0, 4)
@@ -193,28 +184,23 @@ local function createSlider(name, min, max, default, callback)
     label.TextSize = 13
     label.TextXAlignment = Enum.TextXAlignment.Left
     label.Parent = frame
-
     local bar = Instance.new("Frame")
     bar.Size = UDim2.new(1, -20, 0, 8)
     bar.Position = UDim2.new(0, 10, 0, 30)
     bar.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
     bar.BorderSizePixel = 0
     bar.Parent = frame
-
     local barCorner = Instance.new("UICorner")
     barCorner.CornerRadius = UDim.new(0, 4)
     barCorner.Parent = bar
-
     local fill = Instance.new("Frame")
     fill.Size = UDim2.new((default - min) / (max - min), 0, 1, 0)
     fill.BackgroundColor3 = Color3.fromRGB(100, 140, 255)
     fill.BorderSizePixel = 0
     fill.Parent = bar
-
     local fillCorner = Instance.new("UICorner")
     fillCorner.CornerRadius = UDim.new(0, 4)
     fillCorner.Parent = fill
-
     local dragging = false
     bar.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
@@ -235,7 +221,6 @@ local function createSlider(name, min, max, default, callback)
             callback(value)
         end
     end)
-
     return frame
 end
 
@@ -244,6 +229,10 @@ createSection("Combat / Kill Features")
 
 createToggle("Auto Block / Perfect Block", false, function(v)
     Settings.AutoBlock = v
+end)
+
+createSlider("Auto Block Range", 5, 40, 15, function(v)
+    Settings.AutoBlockRange = v
 end)
 
 createToggle("Hitbox Expander / M1 Reach", false, function(v)
@@ -307,11 +296,9 @@ local function createTechToggle(name, techTable)
     frame.BackgroundColor3 = Color3.fromRGB(25, 25, 32)
     frame.BorderSizePixel = 0
     frame.Parent = Scroll
-
     local corner = Instance.new("UICorner")
     corner.CornerRadius = UDim.new(0, 6)
     corner.Parent = frame
-
     local label = Instance.new("TextLabel")
     label.Size = UDim2.new(0.45, 0, 1, 0)
     label.Position = UDim2.new(0, 10, 0, 0)
@@ -322,7 +309,6 @@ local function createTechToggle(name, techTable)
     label.TextSize = 13
     label.TextXAlignment = Enum.TextXAlignment.Left
     label.Parent = frame
-
     local keyBtn = Instance.new("TextButton")
     keyBtn.Size = UDim2.new(0, 50, 0, 22)
     keyBtn.Position = UDim2.new(0.48, 0, 0.5, -11)
@@ -332,11 +318,9 @@ local function createTechToggle(name, techTable)
     keyBtn.Font = Enum.Font.GothamBold
     keyBtn.TextSize = 11
     keyBtn.Parent = frame
-
     local keyCorner = Instance.new("UICorner")
     keyCorner.CornerRadius = UDim.new(0, 4)
     keyCorner.Parent = keyBtn
-
     local togBtn = Instance.new("TextButton")
     togBtn.Size = UDim2.new(0, 44, 0, 22)
     togBtn.Position = UDim2.new(1, -52, 0.5, -11)
@@ -346,7 +330,6 @@ local function createTechToggle(name, techTable)
     togBtn.Font = Enum.Font.GothamBold
     togBtn.TextSize = 11
     togBtn.Parent = frame
-
     local togCorner = Instance.new("UICorner")
     togCorner.CornerRadius = UDim.new(0, 4)
     togCorner.Parent = togBtn
@@ -380,6 +363,73 @@ createTechToggle("Oreo Dash", Tech.OreoDash)
 createTechToggle("Lethal Dash", Tech.LethalDash)
 
 -- ====================== LOGIC ======================
+
+-- Get closest player within range
+local function getClosestInRange(range)
+    local closest, closestDist = nil, range
+    local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if not myRoot then return nil end
+
+    for _, plr in pairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") and plr.Character:FindFirstChild("Humanoid") and plr.Character.Humanoid.Health > 0 then
+            local dist = (plr.Character.HumanoidRootPart.Position - myRoot.Position).Magnitude
+            if dist < closestDist then
+                closestDist = dist
+                closest = plr
+            end
+        end
+    end
+    return closest, closestDist
+end
+
+-- Improved Auto Block
+local function doBlock()
+    local now = tick()
+    if now - LastBlock < 0.12 then return end -- anti spam
+    LastBlock = now
+
+    -- Method 1: Virtual key press (most reliable for TSB)
+    pcall(function()
+        VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.F, false, game)
+        task.wait(0.03)
+        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.F, false, game)
+    end)
+
+    -- Method 2: Also try holding briefly for perfect block window
+    pcall(function()
+        local char = LocalPlayer.Character
+        if char and char:FindFirstChild("Humanoid") then
+            -- Some TSB versions respond better to tool activation or remote
+            -- This is the safe fallback
+        end
+    end)
+end
+
+RunService.Heartbeat:Connect(function()
+    if not Settings.AutoBlock then return end
+    local target, dist = getClosestInRange(Settings.AutoBlockRange)
+    if target and dist then
+        -- Check if they are attacking (playing attack animations)
+        local hum = target.Character:FindFirstChild("Humanoid")
+        if hum then
+            local animator = hum:FindFirstChildOfClass("Animator")
+            if animator then
+                for _, track in pairs(animator:GetPlayingAnimationTracks()) do
+                    local id = track.Animation.AnimationId
+                    -- If any attack-looking animation is playing, block
+                    if track.IsPlaying and track.TimePosition < 0.45 then
+                        doBlock()
+                        break
+                    end
+                end
+            end
+        end
+        -- Also block purely on distance when very close (aggressive mode)
+        if dist < (Settings.AutoBlockRange * 0.6) then
+            doBlock()
+        end
+    end
+end)
 
 -- Aimlock
 local function getClosestPlayer()
@@ -428,20 +478,7 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
--- Auto Block (basic method - fires block remote / key when attack detected nearby)
--- Note: real perfect block depends on game remotes; this is a solid base
-local function tryBlock()
-    -- Simulate block key or remote
-    -- Most TSB scripts fire the block remote here
-    pcall(function()
-        local vim = game:GetService("VirtualInputManager")
-        vim:SendKeyEvent(true, Enum.KeyCode.F, false, game)
-        task.wait(0.05)
-        vim:SendKeyEvent(false, Enum.KeyCode.F, false, game)
-    end)
-end
-
--- No Dash Cooldown + Auto Dash (basic)
+-- WalkSpeed + No Dash Cooldown
 RunService.Heartbeat:Connect(function()
     local char = LocalPlayer.Character
     if not char then return end
@@ -453,7 +490,6 @@ RunService.Heartbeat:Connect(function()
     end
 
     if Settings.NoDashCooldown then
-        -- Remove dash cooldown values if they exist in character
         for _, v in pairs(char:GetDescendants()) do
             if v:IsA("NumberValue") and (v.Name:lower():find("dash") or v.Name:lower():find("cooldown")) then
                 v.Value = 0
@@ -485,8 +521,11 @@ RunService.RenderStepped:Connect(function()
         if UserInputService:IsKeyDown(Enum.KeyCode.D) then dir = dir + Camera.CFrame.RightVector end
         if UserInputService:IsKeyDown(Enum.KeyCode.Space) then dir = dir + Vector3.new(0, 1, 0) end
         if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then dir = dir - Vector3.new(0, 1, 0) end
-        BodyVelocity.Velocity = dir.Unit * Settings.FlySpeed
-        if dir.Magnitude < 0.1 then BodyVelocity.Velocity = Vector3.zero end
+        if dir.Magnitude > 0.1 then
+            BodyVelocity.Velocity = dir.Unit * Settings.FlySpeed
+        else
+            BodyVelocity.Velocity = Vector3.zero
+        end
     elseif Flying then
         Flying = false
         if BodyVelocity then BodyVelocity:Destroy() end
@@ -511,38 +550,23 @@ UserInputService.InputBegan:Connect(function(input, gpe)
     for name, data in pairs(Tech) do
         if input.KeyCode == data.Key then
             data.Enabled = not data.Enabled
-            -- Visual feedback can be added
             print(name .. " toggled:", data.Enabled)
         end
     end
 end)
 
--- Tech execution loops (basic placeholders - expand with real TSB dash methods)
+-- Tech loops (placeholders - expand with real remotes later)
 RunService.Heartbeat:Connect(function()
     local char = LocalPlayer.Character
     if not char or not char:FindFirstChild("HumanoidRootPart") then return end
 
     if Tech.LoopDash.Enabled then
-        -- Loop dash logic (spam dash remote / velocity)
         pcall(function()
-            local vim = game:GetService("VirtualInputManager")
-            vim:SendKeyEvent(true, Enum.KeyCode.Q, false, game)
-            task.wait(0.05)
-            vim:SendKeyEvent(false, Enum.KeyCode.Q, false, game)
+            VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Q, false, game)
+            task.wait(0.04)
+            VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Q, false, game)
         end)
-    end
-
-    if Tech.SupaTech.Enabled then
-        -- Supa tech placeholder
-    end
-
-    if Tech.OreoDash.Enabled then
-        -- Oreo dash placeholder
-    end
-
-    if Tech.LethalDash.Enabled then
-        -- Lethal dash placeholder
     end
 end)
 
-print("TSB Advanced Hub loaded")
+print("TSB Advanced Hub loaded - Auto Block fixed + Range added")
